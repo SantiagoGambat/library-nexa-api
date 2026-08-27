@@ -60,6 +60,8 @@ Ejemplo de variables:
 Desde la raíz del proyecto:
 
     cp .env.example .env
+
+    #El comando de abajo ya (INICIALIZA O RESTAURA) LOS DATOS DE PRUEBA DE LA BASE DE DATOS
     docker compose up -d --build
     docker compose ps
 
