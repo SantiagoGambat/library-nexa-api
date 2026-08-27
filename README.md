@@ -109,6 +109,10 @@ Base URL:
 
     http://localhost:8080
 
+Endpoint Base:
+
+    BASE_URL/api/v1
+
 ## Comandos útiles
 
 Ver logs:
