@@ -1,0 +1,101 @@
+services:
+
+  database:
+    image: postgres:16-alpine
+    container_name: library-database
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "${DB_PORT}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  db-restore:
+    image: postgres:16-alpine
+    container_name: library-db-restore
+
+    depends_on:
+      database:
+        condition: service_healthy
+
+    environment:
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+      PGPASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - ./database/dumps/library_backup.dump:/backup/library_backup.dump:ro
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Checking database..."
+
+        TABLE_EXISTS=$$(psql \
+          -h database \
+          -U "$${DB_USER}" \
+          -d "$${DB_NAME}" \
+          -tAc "SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name = 'lib_libro'
+          );")
+
+        if [ "$$TABLE_EXISTS" = "t" ]; then
+          echo "Database already initialized. Skipping restore."
+          exit 0
+        fi
+
+        echo "Database is empty. Restoring backup..."
+
+        pg_restore \
+          -h database \
+          -U "$${DB_USER}" \
+          -d "$${DB_NAME}" \
+          --no-owner \
+          --verbose \
+          /backup/library_backup.dump
+
+        echo "Database restore completed."
+
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: library-backend
+
+    environment:
+      DB_URI: jdbc:postgresql://database:5432/${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DRIVER: org.postgresql.Driver
+
+    ports:
+      - "${API_PORT}:8080"
+
+    depends_on:
+      db-restore:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+
+volumes:
+  postgres_data:
